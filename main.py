@@ -210,7 +210,6 @@ def predictionPipeline(device, db_path, configs):
         out2=complete_output
     )
 
-
 def viewCAMLoss(data_loader, model_output_list, class_names=['NORMAL', 'PNEUMONIA']):
     """
     Varre os resultados buscando onde o modelo errou e plota o Grad-CAM dessas falhas.

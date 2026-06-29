@@ -1,0 +1,12 @@
+simple_cnn:
+  filters_list: [32, 64]
+  dropout: False
+  batch_norm: False
+  GAP: False
+  best_model_path: "src/models/best_simple_cnn_model.pth"
+complex_cnn:
+  filters_list: [32, 64, 128]
+  dropout: True
+  batch_norm: True
+  GAP: True
+  best_model_path: "src/models/best_complete_cnn_model.pth"

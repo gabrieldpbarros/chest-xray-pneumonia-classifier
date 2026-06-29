@@ -1,0 +1,13 @@
+__pycache__/
+.vscode/
+.git
+*.yaml
+*.zip
+!db/
+db/*
+!db/chest_xray/
+db/chest_xray/*
+!db/chest_xray/test/
+db/chest_xray/test/*
+!db/chest_xray/test/.gitkeep
+!src/models/*.yaml

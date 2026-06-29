@@ -2,7 +2,6 @@ import os
 import pandas as pd
 
 from PIL import Image
-from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from typing import Tuple
@@ -178,6 +177,7 @@ def getTrainingDataLoaders(
         Dados separados conforme a proporção definida internamente em conjuntos de treino,
         validação e teste.
     """
+    from sklearn.model_selection import train_test_split
     proportions = (0.8, 0.2) # treino e validação + teste
     # --- 1. Carregamento do DataFrame ---
     # Correção do PATH

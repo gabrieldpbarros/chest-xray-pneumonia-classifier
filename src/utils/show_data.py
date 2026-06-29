@@ -52,13 +52,15 @@ def overlayGradCAM(
 
 def showGradMap(
     image,
-    label: str
+    label: str,
+    saving: str
 ):
     plt.close('all')
     plt.figure()
     plt.imshow(image)
     plt.axis('off')
     plt.title(label=label)
+    plt.savefig(saving)
     plt.show()
 
 if __name__ == "__main__":

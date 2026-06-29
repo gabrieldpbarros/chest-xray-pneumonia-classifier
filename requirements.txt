@@ -8,9 +8,7 @@ numpy
 nvidia-cudnn-cu12
 scikit-learn
 tqdm
-
-OpenCV,              filtros, transformacoes e segmentacao
-scikit-image,        segmentacao avancada
-Pillow (PIL),        IO de imagens e operacoes basicas
-albumentations,      augmentacao para ML
-numpy,               manipulacao de arrays
+opencv-python       # filtros, transformacoes e segmentacao
+scikit-image        # segmentacao avancada
+pillow              # IO de imagens e operacoes basicas
+albumentations      # augmentacao para ML

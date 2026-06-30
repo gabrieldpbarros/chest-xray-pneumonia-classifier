@@ -134,6 +134,9 @@ class PreProcessPipeline:
     Recebe uma PIL Image e aplica o pipeline realizado.
     """
 
+    def __init__(self, is_train: bool = False):
+        self.is_train = is_train
+
     def __call__(self, pil_img: Image.Image) -> torch.Tensor:
         # Transforma PIL em numpy grayscale
         img = np.array(pil_img.convert("L"), dtype=uint8)
@@ -146,6 +149,10 @@ class PreProcessPipeline:
         img     = prep.normaliza(img)           # -> float32, [0,1]
         img     = prep.replica_canal(img)       # -> (224, 224, 3)
 
+        # Augmentação apenas no treino
+        if self.is_train:
+            img = prep.augmenta(img)
+
         return img
 
 def _setTrainTransformations() -> callable:
@@ -155,26 +162,11 @@ def _setTrainTransformations() -> callable:
 
     Foi adicionado também o pipeline de pré-processamento das imagens realizado.
     Ele trabalha como uma classe que pode ser chamada por transforms.Compose
-    
-    Vale ressaltar um detalhe importante no RandomAffine, a aplicação de um zoom 
-    de 5% a 15% na imagem. Fazemos isso a fim de fugir da possibilidade de problemas 
-    com ruídos nas rotações, as quais geram tarjas pretas nas bordas da imagem. Ao 
-    aplicar esse zoom, sabendo que todas as imagens de raio-X possuem bordas pretas, 
-    garantimos que não hajam inconsistências na análise pela CNN. A escolha dos 
-    valores do zoom foi feita de modo empírico.
     """
-    train_transforms = transforms.Compose([
-        PreProcessPipeline(),
-        
-        transforms.ToTensor(),
 
-        transforms.RandomAffine(
-            degrees=10,             # Rotação leve (máx 10 graus)
-            translate=(0.05, 0.05), # Move um pouco para os lados (5%)
-            scale=(1.05, 1.15),     # Zoom entre 5% e 15%
-            fill=0                  # Se sobrar espaço, preenche com preto
-        ),
-        # transforms.Normalize([0.5], [0.5])
+    train_transforms = transforms.Compose([
+        PreProcessPipeline(is_train=True),
+        transforms.ToTensor(),
     ])
 
 
@@ -182,7 +174,7 @@ def _setTrainTransformations() -> callable:
 
 def _setTestTransformations() -> callable:
     test_transform = transforms.Compose([
-        PreProcessPipeline(),
+        PreProcessPipeline(is_train=False),
         transforms.ToTensor(),
     ])
     return test_transform

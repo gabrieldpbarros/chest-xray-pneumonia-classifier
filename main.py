@@ -140,6 +140,8 @@ def transferLearningPipeline(device, db_path, configs):
 
     resnet_configs = configs['resnet']
     resnet = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
+    for param in resnet.parameters():
+        param.requires_grad = False
     resnet.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
     features_num = resnet.fc.in_features
     resnet.fc = nn.Linear(features_num, 2)
@@ -148,7 +150,8 @@ def transferLearningPipeline(device, db_path, configs):
         model=resnet,
         best_model_path=resnet_configs['best_model_path']
     )
-    optimizer = optim.Adam(resnetModel.model.parameters(), lr=1e-4)
+    training_parameters = filter(lambda p: p.requires_grad, resnetModel.model.parameters())
+    optimizer = optim.Adam(training_parameters, lr=1e-4)
     loss_fn = nn.CrossEntropyLoss()
     num_epochs = EPOCHS
     best_loss = float('inf')

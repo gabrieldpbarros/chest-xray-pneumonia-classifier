@@ -2,9 +2,7 @@ import os
 import torch
 import yaml
 from pathlib import Path
-
-from torch import nn
-from src.models.simple_cnn import cnnModel
+from src.models.simple_cnn import cnnModel, SimpleCNN_Base
 
 EPOCHS = 30
 DEVICE = "cuda"
@@ -20,26 +18,33 @@ def _load_configs(config_path: str):
 
 def trainingPipeline(device, db_path, configs):
     from src.utils.load_data import getTrainingDataLoaders
+    from torch import nn
     train_loader, val_loader, test_loader = getTrainingDataLoaders(db_path)
 
     simple_configs = configs['simple_cnn']
     complete_configs = configs['complex_cnn']
 
-    simpleModel = cnnModel(
-        device=device,
+    simpleCNN = SimpleCNN_Base(
         filters_list=simple_configs['filters_list'],
         dropout=simple_configs['dropout'],
         batch_norm=simple_configs['batch_norm'],
-        GAP=simple_configs['GAP'],
+        GAP=simple_configs['GAP']
+    )
+    simpleModel = cnnModel(
+        device=device,
+        model=simpleCNN,
         best_model_path=simple_configs['best_model_path']
     )
 
-    completeModel = cnnModel(
-        device=device,
+    completeCNN = SimpleCNN_Base(
         filters_list=complete_configs['filters_list'],
         dropout=complete_configs['dropout'],
         batch_norm=complete_configs['batch_norm'],
-        GAP=complete_configs['GAP'],
+        GAP=complete_configs['GAP']
+    )
+    completeModel = cnnModel(
+        device=device,
+        model=completeCNN,
         best_model_path=complete_configs['best_model_path']
     )
 
@@ -60,7 +65,7 @@ def trainingPipeline(device, db_path, configs):
 
         if simpleModel.val_loss[-1] < best_simple_val_loss:
             best_simple_val_loss = simpleModel.val_loss[-1]
-            simpleModel.saveCeckpoint()
+            simpleModel.saveCheckpoint()
             print(f"Epoch {epoch+1}: Melhor modelo (simples) salvo! (Val Loss: {best_simple_val_loss:.4f})")
 
         if completeModel.val_loss[-1] < best_complete_val_loss:
@@ -121,6 +126,68 @@ def trainingPipeline(device, db_path, configs):
         completeModel.predicted_class,
         ['Normal', 'Pneumonia'],
         "assets/Complete_CNN_ConfusionMatrix.png"
+    )
+
+def transferLearningPipeline(device, db_path, configs):
+    import torch.optim as optim
+    from torch import nn
+    from torchvision import models
+    from src.models.simple_cnn import cnnModel
+    from src.utils.load_data import getTrainingDataLoaders
+    from src.utils.view_loss import plotLosses, plotCMatrix
+
+    train_loader, val_loader, test_loader = getTrainingDataLoaders(db_path)
+
+    resnet_configs = configs['resnet']
+    resnet = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
+    resnet.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+    features_num = resnet.fc.in_features
+    resnet.fc = nn.Linear(features_num, 2)
+    resnetModel = cnnModel(
+        device=device,
+        model=resnet,
+        best_model_path=resnet_configs['best_model_path']
+    )
+    optimizer = optim.Adam(resnetModel.model.parameters(), lr=1e-4)
+    loss_fn = nn.CrossEntropyLoss()
+    num_epochs = EPOCHS
+    best_loss = float('inf')
+    for epoch in range(num_epochs):
+        resnetModel.trainModel(train_loader, loss_fn, optimizer)
+        resnetModel.validateModel(val_loader, loss_fn)
+
+        curr_val_loss = resnetModel.val_loss[-1]
+        if curr_val_loss < best_loss:
+            best_loss = resnetModel.val_loss[-1]
+            resnetModel.saveCheckpoint()
+            print(f"Epoch {epoch+1}: Melhor modelo (ResNet) salvo! (Val Loss: {best_loss:.4f})")
+
+        if (epoch+1) % 5 == 0:
+            print(f"Epoch {epoch+1}/{EPOCHS} | ResNet-50 Train Loss: {resnetModel.train_loss[epoch]:.4f} | ResNet-50 Val Loss: {resnetModel.val_loss[epoch]:.4f}")
+
+    plotLosses(
+        "ResNet-50",
+        resnetModel.train_loss,
+        resnetModel.val_loss,
+        "Erro de treino",
+        "Erro de validação",
+        EPOCHS,
+        "assets/ResNet_Losses.png"
+    )
+
+    resnetModel.model.load_state_dict(torch.load(resnet_configs['best_model_path']))
+    resnetModel.testModel(test_loader)
+    print(f"--- Relatório Final (ResNet-50) ---")
+    print(f"Acurácia (Accuracy):   {resnetModel.acc*100:.2f}%")
+    print(f"Precisão (Precision):  {resnetModel.prec*100:.2f}%")
+    print(f"Sensibilidade (Recall):{resnetModel.rec*100:.2f}%")
+    print(f"F1 Score:              {resnetModel.f1*100:.2f}%")
+
+    plotCMatrix(
+        resnetModel.test_class,
+        resnetModel.predicted_class,
+        ['Normal', 'Pneumonia'],
+        "assets/ResNet_ConfusionMatrix.png"
     )
 
 def predictionPipeline(device, db_path, configs):

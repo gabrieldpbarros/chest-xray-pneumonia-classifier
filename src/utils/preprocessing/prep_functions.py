@@ -13,19 +13,19 @@ def le_dataset(caminho):
 
 def aplica_clahe(img):
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    img = clahe.apply(img)
-    return img
+    img_clahe = clahe.apply(img)
+    return img_clahe
 
 def aplica_filtro(img):
-    img = cv2.bilateralFilter(img, d=9, sigmaColor=75, sigmaSpace=75)
-    return img
+    img_filtered = cv2.bilateralFilter(img, d=9, sigmaColor=75, sigmaSpace=75)
+    return img_filtered
 
 def segmenta_pulmao(img):
     # Otsu
     _, img_otsu = cv2.threshold(
         img, 0, 255,
         cv2.THRESH_BINARY + cv2.THRESH_OTSU
-    )[1]
+    )
 
     # Remover bordas conectadas ao limite da imagem
     cleared = clear_border(img_otsu // 255).astype(np.uint8) * 255
@@ -49,20 +49,18 @@ def segmenta_pulmao(img):
     return img_segmented, mask
 
 def redimensiona(img, target_size=(224, 224)):
-    img = cv2.resize(img, target_size, interpolation=cv2.INTER_LANCZOS4)
-    return img
+    img_resized = cv2.resize(img, target_size, interpolation=cv2.INTER_LANCZOS4)
+    return img_resized
 
 def normaliza(img):
-    media   = img.mean()
-    std     = img.std()
-    img = (img - media) / (std + 1e-8) # Evita dividir por zero
-    return img
+    img_norm = img / 255.0
+    return img_norm
 
 def replica_canal(img):
-    img = np.stack([img, img, img], axis=-1)
+    img_replicada = np.stack([img, img, img], axis=-1)
     # (Replica o canal unico em tres
     # Deixa os dados prontos pro treino de modelos
-    return img
+    return img_replicada
 
 def augmenta(img):
     transform_treino = A.Compose([

@@ -6,6 +6,7 @@ matplotlib
 notebook
 numpy
 nvidia-cudnn-cu12
+pandas
 scikit-learn
 tqdm
 opencv-python       # filtros, transformacoes e segmentacao

@@ -145,7 +145,7 @@ class cnnModel():
         self.model.train()
         total_loss = 0.0
         for features, labels in train_loader:
-            features = features.to(self.device)
+            features = features.to(self.device).float()
             labels = labels.to(self.device) # Labels já são int (long) do Dataset
 
             optimizer.zero_grad()
@@ -183,7 +183,7 @@ class cnnModel():
 
         with torch.no_grad():
             for features, labels in val_loader:
-                features = features.to(self.device)
+                features = features.to(self.device).float()
                 labels = labels.to(self.device)
 
                 outputs = self.model(features)
@@ -212,7 +212,7 @@ class cnnModel():
 
         with torch.no_grad():
             for features, labels in test_loader:
-                features = features.to(self.device)
+                features = features.to(self.device).float()
                 labels = labels.to(self.device)
 
                 outputs = self.model(features)
@@ -235,7 +235,7 @@ class cnnModel():
     def passInput(
             self,
             data_input: DataLoader
-    ) -> dict:
+    ) -> list[NetworkOutput]:
         """
         Função de entrada de dados pelo modelo.
 
@@ -263,20 +263,20 @@ class cnnModel():
 
         try:
             for batch in data_input:
-                features = batch[0].to(self.device)
+                features = batch[0].to(self.device).float()
                 for i in range(features.size(0)):
                     image = features[i:i+1]
                     with torch.enable_grad():
                         output = self.model(image)
                         _, predicted = torch.max(output.data, 1)
-                        self.model.zero_grad()
+                        self.model.zero_grad(set_to_none=True)
                         output[0, predicted.item()].backward()
                         self.predicted_class.extend(predicted.cpu().numpy())
                     results.append(
                         NetworkOutput(
                             predicted_class=predicted.item(),
-                            activation_map=activation_maps.squeeze(0),
-                            gradient=weights.squeeze(0)
+                            activation_map=activation_maps.squeeze(0).cpu(),
+                            gradient=weights.squeeze(0).cpu()
                         )
                     )
         finally:

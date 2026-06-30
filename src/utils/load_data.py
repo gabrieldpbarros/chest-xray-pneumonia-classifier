@@ -1,5 +1,7 @@
 import os
 import pandas as pd
+import numpy as np
+from preprocessing import prep_functions as prep
 
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader
@@ -126,10 +128,33 @@ def _createDataFrame(root_dir: str, train: bool):
     })
     return df
 
+class PreProcessPipeline:
+    """
+    Transform customizado e compatível com torchvision.transforms.Compose.
+    Recebe uma PIL Image e aplica o pipeline realizado.
+    """
+
+    def __call__(self, pil_img: Image.Image) -> torch.Tensor:
+        # Transforma PIL em numpy grayscale
+        img = np.array(pil_img.convert("L"), dtype=uint8)
+
+        # Pipeline
+        img     = prep.aplica_clahe(img)
+        img     = prep.aplica_filtro(img)
+        img, _  = prep.segmenta_pulmao(img)
+        img     = prep.redimensiona(img)        # -> (224, 224)
+        img     = prep.normaliza(img)           # -> float32, [0,1]
+        img     = prep.replica_canal(img)       # -> (224, 224, 3)
+
+        return img
+
 def _setTrainTransformations() -> callable:
     """
     Função auxiliar que contém as definições das transformações aplicadas nas
     imagens do dataset.
+
+    Foi adicionado também o pipeline de pré-processamento das imagens realizado.
+    Ele trabalha como uma classe que pode ser chamada por transforms.Compose
     
     Vale ressaltar um detalhe importante no RandomAffine, a aplicação de um zoom 
     de 5% a 15% na imagem. Fazemos isso a fim de fugir da possibilidade de problemas 
@@ -139,25 +164,25 @@ def _setTrainTransformations() -> callable:
     valores do zoom foi feita de modo empírico.
     """
     train_transforms = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.Grayscale(num_output_channels=1),
+        PreProcessPipeline(),
         
+        transforms.ToTensor(),
+
         transforms.RandomAffine(
             degrees=10,             # Rotação leve (máx 10 graus)
             translate=(0.05, 0.05), # Move um pouco para os lados (5%)
             scale=(1.05, 1.15),     # Zoom entre 5% e 15%
             fill=0                  # Se sobrar espaço, preenche com preto
         ),
-
-        transforms.ToTensor(),
         # transforms.Normalize([0.5], [0.5])
     ])
+
+
     return train_transforms
 
 def _setTestTransformations() -> callable:
     test_transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.Grayscale(num_output_channels=1),
+        PreProcessPipeline(),
         transforms.ToTensor(),
     ])
     return test_transform

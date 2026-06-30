@@ -10,3 +10,5 @@ complex_cnn:
   batch_norm: True
   GAP: True
   best_model_path: "src/models/best_complete_cnn_model.pth"
+resnet:
+  best_model_path: "src/models/best_resnet_cnn_model.pth"

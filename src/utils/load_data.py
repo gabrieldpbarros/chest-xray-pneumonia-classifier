@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 import numpy as np
-from preprocessing import prep_functions as prep
+from src.utils.preprocessing import prep_functions as prep
 
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader
@@ -58,8 +58,8 @@ def _find_dir(root_path: str) -> str:
     """
     possibilities = [
         root_path,
-        os.path.join(root_path, "chest_xray"),
-        os.path.join(root_path, "chest_xray/chest_xray"),        
+        os.path.join(root_path, "chest_xray_segmented"),
+        os.path.join(root_path, "chest_xray/chest_xray_segmented"),        
     ]
 
     train_dir = "train/"
@@ -138,17 +138,21 @@ class PreProcessPipeline:
         self.is_train = is_train
 
     def __call__(self, pil_img: Image.Image) -> torch.Tensor:
-        # Transforma PIL em numpy grayscale
+        # Como implementamos o pré-processamento prévio, somente resta a etapa
+        # de augmentation.
+
+        # # Transforma PIL em numpy grayscale
+        # img = np.array(pil_img.convert("L"), dtype=np.uint8)
+ 
+        # # Pipeline
+        # img     = prep.aplica_clahe(img)
+        # img     = prep.aplica_filtro(img)
+        # img, _  = prep.segmenta_pulmao_otsu(img)
+        # img     = prep.redimensiona(img)        # -> (224, 224)
+        # img     = prep.normaliza(img)           # -> float32, [0,1]
+        # #img     = prep.replica_canal(img)       # -> (224, 224, 3)
+
         img = np.array(pil_img.convert("L"), dtype=np.uint8)
-
-        # Pipeline
-        img     = prep.aplica_clahe(img)
-        img     = prep.aplica_filtro(img)
-        img, _  = prep.segmenta_pulmao(img)
-        img     = prep.redimensiona(img)        # -> (224, 224)
-        img     = prep.normaliza(img)           # -> float32, [0,1]
-        img     = prep.replica_canal(img)       # -> (224, 224, 3)
-
         # Augmentação apenas no treino
         if self.is_train:
             img = prep.augmenta(img)
@@ -249,7 +253,7 @@ def getTrainingDataLoaders(
 
 def getSampleData(
         root_path: str,
-        batch_size: int = 32
+        batch_size: int = 128
 ):
     path = _find_dir(root_path)
     full_df = _createDataFrame(path, train=False)

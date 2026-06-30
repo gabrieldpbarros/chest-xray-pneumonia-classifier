@@ -196,12 +196,21 @@ def transferLearningPipeline(device, db_path, configs):
 def predictionPipeline(device, db_path, configs):
     from src.utils.load_data import getSampleData
     from src.core.entities import NetworkOutput
+    from torch import nn
+    from torchvision import models
     BATCH_SIZE = 32
     PROJECT_PATH = Path(__file__).parent
     ASSETS_PATH = PROJECT_PATH / "assets"
     CAM_PATH = ASSETS_PATH / "grad_cam"
 
-    def _processCAM(data_loader, out1, out2):
+    def _free_model(model):
+        import gc
+        model.model.cpu()
+        del model
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def _processCAM(data_loader, out1, out2, out3):
         import matplotlib.pyplot as plt
         from src.utils.grad_cam import GradCAM
         from src.utils.show_data import overlayGradCAM
@@ -226,14 +235,23 @@ def predictionPipeline(device, db_path, configs):
             cam_complete = GradCAM(model_output=res_complete, target_size=IMG_RESIZE).computeGradCAM()
             final_img_complete = overlayGradCAM(imagem_original_tensor, cam_complete)
 
+            # --- Processando a ResNet-50 ---
+            res_resnet = out3[i]
+            pred_resnet = class_names[res_resnet.predicted_class]
+            cam_resnet = GradCAM(model_output=res_resnet, target_size=IMG_RESIZE).computeGradCAM()
+            final_img_resnet = overlayGradCAM(imagem_original_tensor, cam_resnet)
+
             # --- Plotagem Lado a Lado ---
-            fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+            fig, axes = plt.subplots(1, 3, figsize=(12, 5))
             axes[0].imshow(final_img_simple)
             axes[0].set_title(f"Simples | Pred: {pred_simple} | Real: {true_label}")
             axes[0].axis('off')
             axes[1].imshow(final_img_complete)
             axes[1].set_title(f"Completa | Pred: {pred_complete} | Real: {true_label}")
             axes[1].axis('off')
+            axes[2].imshow(final_img_resnet)
+            axes[2].set_title(f"ResNet-50 | Pred: {pred_resnet} | Real: {true_label}")
+            axes[2].axis('off')
             plt.tight_layout()
             file_path = CAM_PATH / f"sample_{i:02d}.png"
             plt.savefig(file_path, bbox_inches='tight', dpi=150)
@@ -243,41 +261,67 @@ def predictionPipeline(device, db_path, configs):
     data_loader = getSampleData(db_path, batch_size=BATCH_SIZE)
 
     simple_configs = configs['simple_cnn']
-    simpleModel = cnnModel(
-        device=device,
+    simpleCNN = SimpleCNN_Base(
         filters_list=simple_configs['filters_list'],
         dropout=simple_configs['dropout'],
         batch_norm=simple_configs['batch_norm'],
-        GAP=simple_configs['GAP'],
+        GAP=simple_configs['GAP']
+    )
+    simpleModel = cnnModel(
+        device=device,
+        model=simpleCNN,
         best_model_path=simple_configs['best_model_path']
     )
     simpleModel.model.load_state_dict(torch.load(simple_configs['best_model_path']))
-    simple_output: NetworkOutput = simpleModel.passInput(data_loader)
+    simple_output: list[NetworkOutput] = simpleModel.passInput(data_loader)
+    simple_output = [out.to_cpu() for out in simple_output]
+    _free_model(simpleModel)
     # viewCAMLoss(data_loader, simple_output)
     #simple_cam = GradCAM(simple_output[0], IMG_RESIZE)
     #cam_map = overlayGradCAM(image_tensor , simple_cam.computeGradCAM())
     #showGradMap(cam_map, 'MODELO SIMPLES', "Simple_CNN_GradCAM.png")
 
     complete_configs = configs['complex_cnn']
-    completeModel = cnnModel(
-        device=device,
+    completeCNN = SimpleCNN_Base(
         filters_list=complete_configs['filters_list'],
         dropout=complete_configs['dropout'],
         batch_norm=complete_configs['batch_norm'],
-        GAP=complete_configs['GAP'],
+        GAP=complete_configs['GAP']
+    )
+    completeModel = cnnModel(
+        device=device,
+        model=completeCNN,
         best_model_path=complete_configs['best_model_path']
     )
     completeModel.model.load_state_dict(torch.load(complete_configs['best_model_path']))
-    complete_output: NetworkOutput = completeModel.passInput(data_loader)
+    complete_output: list[NetworkOutput] = completeModel.passInput(data_loader)
+    complete_output = [out.to_cpu() for out in complete_output]
+    _free_model(completeModel)
     # viewCAMLoss(data_loader, complete_output)
     #complete_cam = GradCAM(complete_output[0], IMG_RESIZE)
     #cam_map = complete_cam.computeGradCAM()
     #showGradMap(cam_map, 'MODELO COMPLEXO', "assets/Complete_CNN_GradCAM.png")
 
+    resnet_configs = configs['resnet']
+    resnet = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
+    resnet.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+    features_num = resnet.fc.in_features
+    resnet.fc = nn.Linear(features_num, 2)
+    resnetModel = cnnModel(
+        device=device,
+        model=resnet,
+        best_model_path=resnet_configs['best_model_path']
+    )
+    resnetModel.model.load_state_dict(torch.load(resnet_configs['best_model_path']))
+    resnet_output: NetworkOutput = resnetModel.passInput(data_loader)
+    resnet_output = [out.to_cpu() for out in resnet_output]
+    _free_model(resnetModel)
+
     _processCAM(
         data_loader=data_loader,
         out1=simple_output,
-        out2=complete_output
+        out2=complete_output,
+        out3=resnet_output
     )
 
 def viewCAMLoss(data_loader, model_output_list, class_names=['NORMAL', 'PNEUMONIA']):
@@ -314,7 +358,10 @@ def viewCAMLoss(data_loader, model_output_list, class_names=['NORMAL', 'PNEUMONI
             output_idx += 1
 
 if __name__ == "__main__":
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
     os.makedirs("src/models", exist_ok=True)
     os.makedirs("assets", exist_ok=True)
     configs = _load_configs(CONFIG_PATH)
+    #transferLearningPipeline(DEVICE, DB_PATH, configs)
+    #trainingPipeline(DEVICE, DB_PATH, configs)
     predictionPipeline(DEVICE, DB_PATH, configs)

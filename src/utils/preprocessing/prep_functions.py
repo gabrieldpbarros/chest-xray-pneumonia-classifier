@@ -20,10 +20,11 @@ def aplica_filtro(img):
     img_filtered = cv2.bilateralFilter(img, d=9, sigmaColor=75, sigmaSpace=75)
     return img_filtered
 
-def segmenta_pulmao(img):
+def segmenta_pulmao_otsu(img):
     # Otsu
+    img_inv = cv2.bitwise_not(img)
     _, img_otsu = cv2.threshold(
-        img, 0, 255,
+        img_inv, 0, 255,
         cv2.THRESH_BINARY + cv2.THRESH_OTSU
     )
 
@@ -48,9 +49,96 @@ def segmenta_pulmao(img):
     img_segmented = cv2.bitwise_and(img, img, mask=mask)
     return img_segmented, mask
 
-def redimensiona(img, target_size=(224, 224)):
-    img_resized = cv2.resize(img, target_size, interpolation=cv2.INTER_LANCZOS4)
-    return img_resized
+def segmenta_pulmao_unet(img, model_unet, device, input_size=512):
+    import torch
+    import torch.nn.functional as F
+    import cv2
+    import numpy as np
+
+    orig_h, orig_w = img.shape[:2]
+
+    # Redimensiona para o tamanho de treino
+    img_resized = cv2.resize(img, (input_size, input_size), interpolation=cv2.INTER_LANCZOS4)
+
+    img_tensor = img_resized.astype(np.float32) / 255.0
+    img_tensor = torch.from_numpy(img_tensor).float().unsqueeze(0).unsqueeze(0)  # (1, 1, H, W)
+    img_tensor = img_tensor.to(device)
+
+    with torch.no_grad():
+        out = model_unet(img_tensor)              # (1, 2, H, W)
+        probs = F.softmax(out, dim=1)
+        mask_pred = torch.argmax(probs, dim=1)     # (1, H, W) -> 0 ou 1
+        mask_pred = mask_pred.squeeze().cpu().numpy()
+
+    mask = (mask_pred == 1).astype(np.uint8)
+    mask = cv2.resize(mask, (orig_w, orig_h), interpolation=cv2.INTER_NEAREST)
+
+    img_segmented = cv2.bitwise_and(img, img, mask=mask)
+    return img_segmented, mask
+
+def segmenta_pulmao_bbox(
+    img, 
+    model_unet, 
+    device, 
+    input_size=512, 
+    margin_pct=0.05,
+    min_area_pct=0.15,
+    min_aspect=0.3,
+    max_aspect=2.5
+):
+    img_segmented_full, mask = segmenta_pulmao_unet(img, model_unet, device, input_size)
+    
+    ys, xs = np.where(mask > 0)
+    if len(xs) == 0:
+        return img, None  # fallback tratado depois
+    
+    h, w = img.shape[:2]
+    margin_x = int(w * margin_pct)
+    margin_y = int(h * margin_pct)
+    
+    x_min = max(0, xs.min() - margin_x)
+    x_max = min(w, xs.max() + margin_x)
+    y_min = max(0, ys.min() - margin_y)
+    y_max = min(h, ys.max() + margin_y)
+
+    crop_w = x_max - x_min
+    crop_h = y_max - y_min
+    area_pct = (crop_w * crop_h) / (w * h)
+    aspect = crop_w / crop_h
+    if area_pct < min_area_pct or not (min_aspect < aspect < max_aspect):
+        return img, None
+    
+    center_x = (x_min + x_max) / 2
+    center_y = (y_min + y_max) / 2
+    desvio_x = abs(center_x - w/2) / w
+    desvio_y = abs(center_y - h/2) / h
+
+    if desvio_x > 0.2 or desvio_y > 0.2:
+        return img, None
+
+    img_cropped = img[y_min:y_max, x_min:x_max]
+    return img_cropped, (y_min, y_max, x_min, x_max)
+
+def redimensiona(img, target_size=224):
+    h, w = img.shape[:2]
+    scale = target_size / max(h, w)
+    new_h, new_w = int(h * scale), int(w * scale)
+    img_resized = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
+    pad_h = target_size - new_h
+    pad_w = target_size - new_w
+    top, bottom = pad_h // 2, pad_h - pad_h // 2
+    left, right = pad_w // 2, pad_w - pad_w // 2
+
+    img_padded = cv2.copyMakeBorder(
+        img_resized,
+        top, 
+        bottom, 
+        left, 
+        right,
+        cv2.BORDER_CONSTANT,
+        value=0
+    )
+    return img_padded
 
 def normaliza(img):
     img_norm = img / 255.0
@@ -71,7 +159,7 @@ def augmenta(img):
             contrast_limit=0.15,
             p=0.5
         ),
-        A.GaussNoise(var_limit=(5.0, 25.0), p=0.3),
+        A.GaussNoise(std_range=(0.008, 0.02), p=0.3),
         A.GridDistortion(p=0.2),        # simula variações de posicionamento
         A.ElasticTransform(p=0.2),      # deformação suave dos tecidos
     ])

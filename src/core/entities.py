@@ -12,3 +12,8 @@ class NetworkOutput:
     predicted_class: str
     activation_map: torch.Tensor
     gradient: torch.Tensor
+
+    def to_cpu(self):
+        self.activation_map = self.activation_map.detach().cpu()
+        self.gradient = self.gradient.detach().cpu()
+        return self

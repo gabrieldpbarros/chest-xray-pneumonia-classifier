@@ -133,13 +133,13 @@ class PreProcessPipeline:
     Transform customizado e compatível com torchvision.transforms.Compose.
     Recebe uma PIL Image e aplica o pipeline realizado.
     """
-
+    import torch
     def __init__(self, is_train: bool = False):
         self.is_train = is_train
 
     def __call__(self, pil_img: Image.Image) -> torch.Tensor:
         # Transforma PIL em numpy grayscale
-        img = np.array(pil_img.convert("L"), dtype=uint8)
+        img = np.array(pil_img.convert("L"), dtype=np.uint8)
 
         # Pipeline
         img     = prep.aplica_clahe(img)
@@ -217,7 +217,7 @@ def getTrainingDataLoaders(
     )
 
     # --- 3. Definição das transformações ---
-    train_transforms, val_test_transforms = _setTrainTransformations()
+    train_transforms = _setTrainTransformations()
     val_test_transforms = _setTestTransformations()
 
     # --- 4. Instanciação dos DataSets e DataLoaders ---
